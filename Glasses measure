@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Measure Face for Glasses</title>
+    <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/face-api.js"></script>
+    <style>
+        body { text-align: center; font-family: Arial, sans-serif; }
+        video { border: 2px solid black; }
+        canvas { position: absolute; top: 0; left: 0; }
+    </style>
+</head>
+<body>
+
+    <h2>Virtual Glasses Measurement</h2>
+    <video id="video" width="640" height="480" autoplay></video>
+    <canvas id="overlay"></canvas>
+    <p id="ipd"></p>
+    <p id="glassesSize"></p>
+
+    <script>
+        const video = document.getElementById("video");
+        const canvas = document.getElementById("overlay");
+        const context = canvas.getContext("2d");
+
+        async function startVideo() {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: {} });
+            video.srcObject = stream;
+        }
+
+        async function detectFace() {
+            await faceapi.nets.tinyFaceDetector.loadFromUri("https://cdn.jsdelivr.net/npm/face-api.js/weights");
+            await faceapi.nets.faceLandmark68Net.loadFromUri("https://cdn.jsdelivr.net/npm/face-api.js/weights");
+
+            setInterval(async () => {
+                const detections = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks();
+                if (!detections) return;
+
+                canvas.width = video.width;
+                canvas.height = video.height;
+                context.clearRect(0, 0, canvas.width, canvas.height);
+
+                const landmarks = detections.landmarks;
+
+                // Get pupil positions (eye center points)
+                const leftEye = landmarks.getLeftEye();
+                const rightEye = landmarks.getRightEye();
+                const leftPupil = leftEye[0];  // First landmark of left eye
+                const rightPupil = rightEye[3]; // Fourth landmark of right eye
+
+                // Draw a line between pupils
+                context.beginPath();
+                context.moveTo(leftPupil.x, leftPupil.y);
+                context.lineTo(rightPupil.x, rightPupil.y);
+                context.strokeStyle = "green";
+                context.lineWidth = 2;
+                context.stroke();
+
+                // Calculate IPD (Interpupillary Distance) in pixels
+                const ipdPixels = Math.sqrt(Math.pow(rightPupil.x - leftPupil.x, 2) + Math.pow(rightPupil.y - leftPupil.y, 2));
+
+                // Convert to mm (assuming 1 pixel ≈ 0.26 mm for an average webcam)
+                const ipdMM = ipdPixels * 0.26;
+                document.getElementById("ipd").innerText = `IPD: ${ipdMM.toFixed(1)} mm`;
+
+                // Determine glasses size
+                let glassesSize = "Medium Frame";
+                if (ipdMM < 58) glassesSize = "Small Frame";
+                else if (ipdMM > 66) glassesSize = "Large Frame";
+
+                document.getElementById("glassesSize").innerText = `Recommended Glasses Size: ${glassesSize}`;
+            }, 100);
+        }
+
+        startVideo().then(detectFace);
+    </script>
+
+</body>
+</html>
+
+
